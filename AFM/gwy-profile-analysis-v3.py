@@ -1,4 +1,5 @@
 # AFM Profile Analysis Tool (raw data from Gwyddion)
+# version 2 is the latest update of version 1
 
 # PURPOSE:
 # Analyzes AFM (Atomic Force Microscopy) profile data exported from Gwyddion.
@@ -35,7 +36,7 @@
 # 2. CSV file with per-file results and summary statistics
 #    - Includes V_High and V_Low (max/min of V_left and V_right per profile)
 
-# Author: Berke Santos & Giuseppe Legrotaglie
+# Author: Berke Santos & Giuseppe Legrottaglie
 # Developed with the help of Claude.AI and ChatGPT version 5.2
 # Created: 16/02/2026
 
@@ -76,13 +77,7 @@ def load_profile_txt(path: str):
 
 
 def find_local_maxima_around_min(x: np.ndarray, y: np.ndarray):
-    """Find the local maxima on either side of the global minimum.
-
-    Returns
-    -------
-    i_left, i_min, i_right : int
-        Indices of the left local max, global min, and right local max.
-    """
+    
     i_min = int(np.argmin(y))
 
     # Left local maximum (closest to i_min if plateau)
@@ -107,38 +102,24 @@ def find_local_maxima_around_min(x: np.ndarray, y: np.ndarray):
 
 
 def horizontal_amplitude_around_min(x: np.ndarray, y: np.ndarray):
-    """Horizontal distance between local maxima on either side of the global minimum."""
+
     i_left, i_min, i_right = find_local_maxima_around_min(x, y)
     width = float(abs(x[i_right] - x[i_left]))
+
     return width, (i_left, i_min, i_right)
 
 
 def vertical_amplitudes_left_right(x, z, idxs):
-    """Compute vertical amplitudes on each side of the global minimum.
-
-    V_left  = z[i_left]  - z[i_min]
-    V_right = z[i_right] - z[i_min]
-    """
+    
     i_left, i_min, i_right = idxs
     v_left = float(z[i_left] - z[i_min])
     v_right = float(z[i_right] - z[i_min])
+
     return v_left, v_right
 
 
 def width_metric(x, z, idxs):
-    """Compute the 'width' metric using cubic spline interpolation.
-
-    1. Build a cubic spline through the profile data.
-    2. Identify the smaller of the two local maxima (left / right of global min).
-    3. On the *opposite* side of the minimum, find where the spline crosses
-       z = z_ref (the smaller max's z-value) by dense evaluation + root search.
-    4. Return the horizontal distance (|Δx|) between the reference point
-       and the spline intersection.  Because the intersection is at z = z_ref
-       by construction, the width line is perfectly horizontal.
-
-    Falls back to the discrete (nearest-point) method if the spline
-    intersection cannot be found.
-    """
+    
     i_left, i_min, i_right = idxs
 
     z_left = z[i_left]
@@ -223,12 +204,18 @@ def safe_stem(filename: str):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", stem)
 
 
+def format_number(val, decimal_sep='.', precision=':.4g'):
+    """Format number with chosen decimal separator"""
+    if not np.isfinite(val):
+        return "NaN"
+    formatted = f"{val{precision}}"
+    if decimal_sep == ',':
+        formatted = formatted.replace('.', ',')
+    return formatted
+
+
 def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
-                 width_match_point, spline, metrics, unit='nm'):
-    """
-    metrics : dict with keys 'v_left', 'v_right', 'h_amp', 'w_val'
-              already in display units (same values that go into the CSV).
-    """
+                 width_match_point, spline, scale=1e9, unit='nm', decimal_sep='.'):
 
     name = os.path.basename(path)
     stem = safe_stem(name)
@@ -236,29 +223,26 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     i_left, i_min, i_right = idxs
     w_match_x, w_match_z = width_match_point
 
-    # Use the SAME metric values that will go into the CSV
-    v_left = metrics['v_left']
-    v_right = metrics['v_right']
-    h_amp = metrics['h_amp']
-    w_val = metrics['w_val']
-
-    # Infer scale from metric values vs raw data
-    # (avoids passing scale separately and keeps a single source of truth)
-    raw_h = float(abs(x[i_right] - x[i_left]))
-    S = h_amp / raw_h if raw_h > 0 else 1.0
-
-    # Convert coordinates to display units
+    # Convert to display units
+    S = scale
     x_d = x * S
     z_d = z * S
     w_match_x_d = w_match_x * S
     w_match_z_d = w_match_z * S
 
-    # Global extrema (for markers only)
+    # Global extrema
     i_max = int(np.argmax(z_d))
     i_min_global = int(np.argmin(z_d))
 
     x_max, z_max = float(x_d[i_max]), float(z_d[i_max])
     x_min, z_min = float(x_d[i_min_global]), float(z_d[i_min_global])
+
+    v_left = float(z_d[i_left] - z_d[i_min_global])
+    v_right = float(z_d[i_right] - z_d[i_min_global])
+    h_amp = float(abs(x_d[i_right] - x_d[i_left]))
+
+    # Width metric value (horizontal by construction), in nm
+    w_val = float(abs(w_match_x_d - x_d[width_ref_idx]))
 
     # Calculate plot ranges
     x_span = float(np.max(x_d) - np.min(x_d))
@@ -320,7 +304,7 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     ax.text(
         x_vl - 0.02 * x_span,
         (float(z_d[i_left]) + z_min) / 2.0,
-        f"V_L = {v_left:.4g} {unit}",
+        f"V_L = {format_number(v_left, decimal_sep)} {unit}",
         va="center", ha="right", fontsize=9, fontweight="bold", color='#CC3366',
         bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
                   edgecolor='#CC3366', alpha=0.8)
@@ -338,7 +322,7 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     ax.text(
         x_vr + 0.02 * x_span,
         (float(z_d[i_right]) + z_min) / 2.0,
-        f"V_R = {v_right:.4g} {unit}",
+        f"V_R = {format_number(v_right, decimal_sep)} {unit}",
         va="center", ha="left", fontsize=9, fontweight="bold", color='#3366CC',
         bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
                   edgecolor='#3366CC', alpha=0.8)
@@ -356,7 +340,7 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     ax.text(
         (x_d[i_left] + x_d[i_right]) / 2.0,
         y_arrow - 0.05 * z_span,
-        f"H = {h_amp:.4g} {unit}",
+        f"H = {format_number(h_amp, decimal_sep)} {unit}",
         va="top", ha="center", fontsize=10, fontweight="bold", color='green',
         bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                   edgecolor='green', alpha=0.8)
@@ -377,7 +361,7 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     ax.text(
         mid_x_w,
         mid_z_w + 0.06 * z_span,
-        f"W = {w_val:.4g} {unit}",
+        f"W = {format_number(w_val, decimal_sep)} {unit}",
         va="bottom", ha="center", fontsize=9, fontweight="bold", color='darkcyan',
         bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
                   edgecolor='darkcyan', alpha=0.8)
@@ -409,10 +393,11 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
     return out_path
 
 
-def save_results_to_csv(per_file_results, summary_stats, output_path, unit='m'):
+def save_results_to_csv(per_file_results, summary_stats, output_path, unit='m', 
+                        decimal_sep='.', csv_delimiter=';'):
 
     with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile, delimiter=';')
+        writer = csv.writer(csvfile, delimiter=csv_delimiter)
 
         # Header
         writer.writerow([f'=== PER-FILE RESULTS (values in {unit}) ==='])
@@ -428,7 +413,7 @@ def save_results_to_csv(per_file_results, summary_stats, output_path, unit='m'):
 
         for name, vl, vr, vh, vlo, h, w in per_file_results:
             def fmt(val):
-                return f"{val:.10g}" if np.isfinite(val) else "NaN"
+                return format_number(val, decimal_sep, precision=':.10g')
             writer.writerow([name, fmt(vl), fmt(vr), fmt(vh), fmt(vlo), fmt(h), fmt(w)])
 
         writer.writerow([])
@@ -444,13 +429,14 @@ def save_results_to_csv(per_file_results, summary_stats, output_path, unit='m'):
         ]:
             writer.writerow([
                 label,
-                f"{summary_stats[f'{key}_mean']:.10g}",
-                f"{summary_stats[f'{key}_sd']:.10g}",
+                format_number(summary_stats[f'{key}_mean'], decimal_sep, precision=':.10g'),
+                format_number(summary_stats[f'{key}_sd'], decimal_sep, precision=':.10g'),
                 summary_stats[f'{key}_n']
             ])
 
 
 def main():
+
     print("=" * 70)
     print("=== AFM Profile Analysis Tool (Enhanced Version) ===")
     print("=" * 70)
@@ -467,17 +453,6 @@ def main():
     print("\n  NOTE: This script assumes input data is in METERS (SI units),")
     print("  which is the default export format of Gwyddion.\n")
 
-    # --- Conversion prompt ---
-    convert_input = input("  Convert output to nanometers? (y/n) [default: y]: ").strip().lower()
-    if convert_input in ('n', 'no'):
-        scale = 1.0
-        unit = 'm'
-        print("  → Output will be in METERS.\n")
-    else:
-        scale = 1e9
-        unit = 'nm'
-        print("  → Output will be in NANOMETERS.\n")
-
     folder = input("Paste the folder path containing .txt profiles: ").strip().strip('"').strip("'")
 
     if not os.path.isdir(folder):
@@ -491,6 +466,34 @@ def main():
 
     plots_dir = os.path.join(folder, "plots")
     os.makedirs(plots_dir, exist_ok=True)
+
+    # Decimal delimiter prompt
+    print("\n" + "=" * 70)
+    print("DECIMAL DELIMITER:")
+    print("  A: USA/Canada standard (e.g., 3.14)")
+    print("  B: European standard (e.g., 3,14)")
+    print("=" * 70)
+    delimiter_choice = input("Choose decimal delimiter (A/B) [default: A]: ").strip().upper()
+
+    if delimiter_choice == 'B':
+        decimal_sep = ','
+        csv_delimiter = ';'
+        print("  → Using European format (comma as decimal separator)\n")
+    else:
+        decimal_sep = '.'
+        csv_delimiter = ','
+        print("  → Using USA/Canada format (period as decimal separator)\n")
+
+    # Conversion prompt
+    convert_input = input("  Convert output to nanometers (check if the input is in meters)? (y/n) [default: y]: ").strip().lower()
+    if convert_input in ('n', 'no'):
+        scale = 1.0
+        unit = 'm'
+        print("  → Output will be in METERS.\n")
+    else:
+        scale = 1e9
+        unit = 'nm'
+        print("  → Output will be in NANOMETERS.\n")
 
     per_file = []
     vlamps, vramps, vhamps, vloamps, hamps, wamps = [], [], [], [], [], []
@@ -514,9 +517,7 @@ def main():
 
             out_plot = plot_profile(path, x, z, plots_dir, idxs,
                                    w_ref, w_match_pt, spline,
-                                   metrics={'v_left': vl_s, 'v_right': vr_s,
-                                            'h_amp': h_s, 'w_val': w_s},
-                                   unit=unit)
+                                   scale=scale, unit=unit, decimal_sep=decimal_sep)
 
             # Apply scale for CSV and display
             vl_s = vl * scale
@@ -535,11 +536,11 @@ def main():
             wamps.append(w_s)
             plot_paths.append(out_plot)
 
-            print("✓")
+            print("-> SUCCESSFUL !")
 
         except Exception as e:
             per_file.append((name, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
-            print(f"✗ ERROR: {e}")
+            print(f"-> ERROR: {e}")
 
     # Print per-file results
     print(f"\n" + "=" * 120)
@@ -547,9 +548,10 @@ def main():
     print("=" * 120)
     print(f"{'Filename':35s}  {'V_Left':>12s}  {'V_Right':>12s}  {'V_High':>12s}  {'V_Low':>12s}  {'H_amp':>12s}  {'Width':>12s}")
     print("-" * 120)
+
     for name, vl, vr, vh, vlo, h, w in per_file:
         def fmt(val):
-            return f"{val:.6g}" if np.isfinite(val) else "NaN"
+            return format_number(val, decimal_sep, precision=':.6g')
         print(f"{name[:35]:35s}  {fmt(vl):>12s}  {fmt(vr):>12s}  {fmt(vh):>12s}  {fmt(vlo):>12s}  {fmt(h):>12s}  {fmt(w):>12s}")
 
     # Summary stats
@@ -565,6 +567,7 @@ def main():
     print(f"\n" + "=" * 78)
     print(f"SUMMARY STATISTICS ({unit}, finite values only):")
     print("=" * 78)
+
     for key, label in [('vl', 'Vertical amplitude left'),
                         ('vr', 'Vertical amplitude right'),
                         ('vh', 'Vertical amplitude HIGH'),
@@ -572,13 +575,14 @@ def main():
                         ('h', 'Horizontal amplitude'),
                         ('w', 'Width (spline)')]:
         print(f"{label}:")
-        print(f"  Mean = {stats[f'{key}_mean']:.6g}, "
-              f"SD = {stats[f'{key}_sd']:.6g}, "
+        print(f"  Mean = {format_number(stats[f'{key}_mean'], decimal_sep, precision=':.6g')}, "
+              f"SD = {format_number(stats[f'{key}_sd'], decimal_sep, precision=':.6g')}, "
               f"N = {stats[f'{key}_n']}")
 
     # Save CSV
     csv_path = os.path.join(folder, "afm_analysis_results.csv")
-    save_results_to_csv(per_file, stats, csv_path, unit=unit)
+    save_results_to_csv(per_file, stats, csv_path, unit=unit, 
+                        decimal_sep=decimal_sep, csv_delimiter=csv_delimiter)
 
     print("\n" + "=" * 78)
     print("OUTPUT FILES:")
@@ -587,8 +591,10 @@ def main():
     print(f"    ({len(plot_paths)} profile plot(s) created)")
     print(f"  • Results CSV: {csv_path}")
     print(f"  • Units: {unit}")
+    print(f"  • Decimal separator: '{decimal_sep}'")
+    print(f"  • CSV field delimiter: '{csv_delimiter}'")
     print("=" * 78)
-    print("\n✓ Analysis complete!")
+    print("\n--> Analysis complete !")
 
 
 if __name__ == "__main__":
