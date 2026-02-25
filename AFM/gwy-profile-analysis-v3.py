@@ -1,5 +1,5 @@
 # AFM Profile Analysis Tool (raw data from Gwyddion)
-# version 2 is the latest update of version 1
+# version 3 - Added decimal delimiter customization (USA vs European format)
 
 # PURPOSE:
 # Analyzes AFM (Atomic Force Microscopy) profile data exported from Gwyddion.
@@ -10,11 +10,15 @@
 #    - Left local max (nearest to global min on left side) minus global min
 # 2. Vertical Amplitude Right (V_right):
 #    - Right local max (nearest to global min on right side) minus global min
-# 3. Horizontal Amplitude (H):
+# 3. Vertical Amplitude High (V_high):
+#    - Maximum of V_left and V_right (highest vertical amplitude)
+# 4. Vertical Amplitude Low (V_low):
+#    - Minimum of V_left and V_right (lowest vertical amplitude)
+# 5. Horizontal Amplitude (H):
 #    - Distance between local maxima on either side of the global minimum
 #    - Tie-breaking: When multiple points share the max value (plateaus),
 #      selects the point closest to the minimum to avoid overestimation
-# 4. Width (W):
+# 6. Width (W):
 #    - Builds a cubic spline through the profile data
 #    - Identifies the smaller of the two local maxima
 #    - Finds where the spline crosses z = z_ref on the opposite side of
@@ -26,19 +30,28 @@
 # INPUT:
 # - Gwyddion-exported files with x and y columns (need to be converted to .txt)
 # - Files should be in a single folder (user provides the directory to this folder)
+# - User selections:
+#   * Decimal delimiter format: USA/Canada (3.14) or European (3,14)
+#   * Unit conversion: meters (original) or nanometers (scaled)
 
 # OUTPUT:
 # 1. Individual annotated plots for each profile (saved in the input-directory/plots/ directory)
 #    - Plotted in user-selected unit (meters or nanometers)
+#    - Numbers formatted with user-selected decimal separator
 #    - Color-coded markers (red=global max, blue=global min, orange=local max,
 #      cyan=width reference point)
 #    - Visual amplitude annotations
 # 2. CSV file with per-file results and summary statistics
 #    - Includes V_High and V_Low (max/min of V_left and V_right per profile)
+#    - Decimal separator and CSV field delimiter automatically adjusted:
+#      * USA format: decimal='.' and CSV delimiter=','
+#      * European format: decimal=',' and CSV delimiter=';'
 
 # Author: Berke Santos & Giuseppe Legrottaglie
 # Developed with the help of Claude.AI and ChatGPT version 5.2
 # Created: 16/02/2026
+# Updated: 25/02/2026 - Added decimal delimiter customization
+
 
 import os
 import re
@@ -601,4 +614,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
