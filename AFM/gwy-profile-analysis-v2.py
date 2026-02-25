@@ -1,5 +1,5 @@
 # AFM Profile Analysis Tool (raw data from Gwyddion)
-# version 2 is the latest update of version 1
+# (old version)
 
 # PURPOSE:
 # Analyzes AFM (Atomic Force Microscopy) profile data exported from Gwyddion.
