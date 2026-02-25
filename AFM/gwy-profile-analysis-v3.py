@@ -208,7 +208,9 @@ def format_number(val, decimal_sep='.', precision=':.4g'):
     """Format number with chosen decimal separator"""
     if not np.isfinite(val):
         return "NaN"
-    formatted = f"{val{precision}}"
+    # Extract the format spec from precision string (remove the leading ':')
+    fmt_spec = precision.lstrip(':')
+    formatted = f"{val:{fmt_spec}}"
     if decimal_sep == ',':
         formatted = formatted.replace('.', ',')
     return formatted
