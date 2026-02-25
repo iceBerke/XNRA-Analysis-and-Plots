@@ -386,7 +386,7 @@ def plot_profile(path, x, z, out_dir, idxs, width_ref_idx,
 def save_results_to_csv(per_file_results, summary_stats, output_path, unit='m'):
 
     with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
+        writer = csv.writer(csvfile, delimiter=';')
 
         # Header
         writer.writerow([f'=== PER-FILE RESULTS (values in {unit}) ==='])
