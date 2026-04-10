@@ -18,6 +18,7 @@ dist/
 Flavunato/2026-04-09/dist/
 Flavunato/2026-04-09/build/
 Flavunato/2026-04-09/*.spec
+Flavunato/2026-04-09/*.txt
 
 # Optional: packaged binaries
 *.exe
